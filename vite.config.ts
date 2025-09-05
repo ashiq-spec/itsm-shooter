@@ -5,5 +5,6 @@ import react from '@vitejs/plugin-react'
 // update the base path below to '/<repo>/'.
 export default defineConfig({
   plugins: [react()],
-  base: '/itsm-shooter/',
+  base: "/itsm-shooter/",
 })
+
