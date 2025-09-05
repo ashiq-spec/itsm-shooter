@@ -55,10 +55,17 @@ export default function ITSMSpaceShooter() {
     for(let i=0;i<n;i++){
       const r = 18 + (i%3)*3;
       const x = R(PAD, VIEW_W-PAD), y = R(PAD, VIEW_H*0.48);
-      const sp = ENEMY_BASE_SPD + Math.random()*1.0;
-      a = R(0, Math.PI*2);
-      const hp = Math.round(ENEMY_BASE_HP + Math.random()*1.4);
-      es.push({x,y,dx:Math.cos(a)*sp,dy:Math.sin(a)*sp,r,hp,label: ITSM_PROBLEMS[i % ITSM_PROBLEMS.length]});
+      const sp = ENEMY_BASE_SPD + Math.random() * 1.0;
+const a  = R(0, Math.PI * 2);
+const hp = Math.round(ENEMY_BASE_HP + Math.random() * 1.4);
+es.push({
+  x, y,
+  dx: Math.cos(a) * sp,
+  dy: Math.sin(a) * sp,
+  r, hp,
+  label: ITSM_PROBLEMS[i % ITSM_PROBLEMS.length],
+});
+
     }
     game.current = { ...game.current, enemies: es, bullets: [], player: { x: VIEW_W/2, y: VIEW_H-100, r: 18, hp: 1 } };
     timeLeftRef.current = TIMER_MS; setTimeLeft(TIMER_MS); setUiState('playing');
