@@ -1,12 +1,22 @@
 import React, { useRef, useEffect, useState } from "react";
 
-// ITSM Space Shooter — v1.5
+// ITSM Space Shooter — v1.6 (aggressive AI + nicer CTA)
 // Single level • One life • 30s timer • Retry only
 export default function ITSMSpaceShooter() {
   const VIEW_W = 1024, VIEW_H = 640;
   const PLAYER_SPEED = 4, BULLET_SPEED = 11, FIRE_MS = 150;
   const ENEMY_BASE_SPD = 1.8, ENEMY_BASE_HP = 2, PAD = 60;
   const TIMER_MS = 30_000;
+
+  // Inline CTA styles (since Tailwind isn't installed in this repo)
+  const ctaStyle: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    background: 'linear-gradient(135deg,#06b6d4 0%,#22d3ee 100%)',
+    color: '#04111f', textDecoration: 'none', fontWeight: 700,
+    padding: '12px 18px', borderRadius: 12,
+    boxShadow: '0 10px 24px rgba(6,182,212,.35)',
+    border: '1px solid rgba(255,255,255,.25)'
+  };
 
   const ITSM_PROBLEMS = [
     "P1 Outage", "SLA Breach", "VIP Escalation", "CMDB Drift", "Change Failure",
@@ -26,7 +36,7 @@ export default function ITSMSpaceShooter() {
     score: 0,
     player: { x: VIEW_W/2, y: VIEW_H-100, r: 16, hp: 1 },
     bullets: [] as {x:number;y:number;dx:number;dy:number;r:number;}[],
-    enemies: [] as {x:number;y:number;dx:number;dy:number;r:number;hp:number;label:string;}[],
+    enemies: [] as {x:number;y:number;dx:number;dy:number;r:number;hp:number;label:string;dashC:number;}[],
   });
 
   const R = (a:number,b:number)=>Math.random()*(b-a)+a;
@@ -54,19 +64,15 @@ export default function ITSMSpaceShooter() {
     const n = 28;
     for(let i=0;i<n;i++){
       const r = 18 + (i%3)*3;
-      const x = R(PAD, VIEW_W-PAD), y = R(PAD, VIEW_H*0.48);
-      const sp = ENEMY_BASE_SPD + Math.random() * 1.0;
-const a  = R(0, Math.PI * 2);
-const hp = Math.round(ENEMY_BASE_HP + Math.random() * 1.4);
-es.push({
-  x, y,
-  dx: Math.cos(a) * sp,
-  dy: Math.sin(a) * sp,
-  r, hp,
-  label: ITSM_PROBLEMS[i % ITSM_PROBLEMS.length],
-});
-
+      const x = R(PAD, VIEW_W-PAD), y = R(PAD, VIEW_H*0.35); // spawn higher on the screen
+      const sp = ENEMY_BASE_SPD + Math.random()*1.0;
+      const a = R(0, Math.PI*2);
+      const hp = Math.round(ENEMY_BASE_HP + Math.random()*1.4);
+      es.push({x,y,dx:Math.cos(a)*sp,dy:Math.sin(a)*sp,r,hp,label: ITSM_PROBLEMS[i % ITSM_PROBLEMS.length], dashC: Math.random()*800});
     }
+    game.current = { ...game.current, enemies: es, bullets: [], player: { x: VIEW_W/2, y: VIEW_H-100, r: 18, hp: 1 } };
+    timeLeftRef.current = TIMER_MS; setTimeLeft(TIMER_MS); setUiState('playing');
+  }
     game.current = { ...game.current, enemies: es, bullets: [], player: { x: VIEW_W/2, y: VIEW_H-100, r: 18, hp: 1 } };
     timeLeftRef.current = TIMER_MS; setTimeLeft(TIMER_MS); setUiState('playing');
   }
@@ -114,12 +120,36 @@ es.push({
     for(const b of g.bullets){ b.x+=b.dx; b.y+=b.dy; }
     g.bullets=g.bullets.filter(b=>b.y>-12 && b.x>-12 && b.x<VIEW_W+12);
 
-    // enemies
+    // enemies — aggressive homing + dash + separation, full-screen pursuit
+    const panic = timeLeftRef.current < 10_000; // last 10s harder
     for(const e of g.enemies){
+      // homing
       const toX=p.x-e.x, toY=p.y-e.y; const L=Math.max(1,Math.hypot(toX,toY));
-      const steer=0.07; e.dx+=(toX/L)*steer; e.dy+=(toY/L)*steer;
-      const spd=Math.max(ENEMY_BASE_SPD, Math.hypot(e.dx,e.dy)); const cap=3.5; const s=Math.min(1, cap/spd); e.dx*=s; e.dy*=s;
-      e.x+=e.dx; e.y+=e.dy; if(e.x<e.r||e.x>VIEW_W-e.r) e.dx*=-1; if(e.y<e.r||e.y>VIEW_H*0.7) e.dy*=-1;
+      const steer = panic ? 0.12 : 0.09; // stronger steering
+      e.dx += (toX/L)*steer; e.dy += (toY/L)*steer;
+
+      // occasional dash toward player
+      e.dashC += dt; if(e.dashC>1100){
+        const ux=toX/L, uy=toY/L; const boost = panic ? 5.2 : 4.3;
+        e.dx = ux*boost; e.dy = uy*boost; // burst speed
+        e.dashC = -280 + Math.random()*120; // short cooldown window (negative = active)
+      }
+
+      // cap speed + move
+      const cap = panic ? 5.0 : 4.0; const spd=Math.max(ENEMY_BASE_SPD, Math.hypot(e.dx,e.dy)); const s=Math.min(1, cap/spd); e.dx*=s; e.dy*=s;
+      e.x+=e.dx; e.y+=e.dy;
+
+      // keep on screen (bounce off real edges only)
+      if(e.x<e.r||e.x>VIEW_W-e.r) e.dx*=-1; if(e.y<e.r||e.y>VIEW_H-e.r) e.dy*=-1;
+    }
+
+    // simple separation to avoid clumping
+    for(let i=0;i<g.enemies.length;i++){
+      for(let j=i+1;j<g.enemies.length;j++){
+        const a=g.enemies[i], b=g.enemies[j];
+        const dx=a.x-b.x, dy=a.y-b.y; const min=a.r+b.r+6; const d2v=dx*dx+dy*dy;
+        if(d2v < min*min){ const d=Math.max(1,Math.sqrt(d2v)); const push=0.06; const ux=dx/d, uy=dy/d; a.dx+=ux*push; a.dy+=uy*push; b.dx-=ux*push; b.dy-=uy*push; }
+      }
     }
 
     // bullet hits
@@ -202,8 +232,12 @@ es.push({
         <a
           href="https://www.manageengine.com/products/service-desk/download.html"
           target="_blank" rel="noreferrer"
-          className="mt-2 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ring-1 ring-cyan-400/40 bg-cyan-500/10 hover:bg-cyan-500/20"
+          style={ctaStyle}
+          aria-label="Try ServiceDesk Plus — Free Trial"
         >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginRight:6}}>
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z" fill="#083344"/>
+          </svg>
           Try ServiceDesk Plus — Free Trial
         </a>
       )}
